@@ -133,8 +133,8 @@ ridge <- train(factor(fraudulent) ~ ., data = train.data,
 
 ridge$bestTune$lambda
 
-ridge.pred.values <- ridge %>% predict(test.data)
-mean(ridge.pred.values == test.data$fraudulent)
+test.data$ridge.pred.values <- ridge %>% predict(test.data)
+mean(test.data$ridge.pred.values == test.data$fraudulent)
 
 
 
@@ -154,16 +154,63 @@ bt <- train(factor(fraudulent) ~ ., data = train.data,
             allowParallel = TRUE,
             control = rpart.control(cp = 0))
 
-bt.pred.values <- bt %>% predict(test.data)
+test.data$bt.pred.values <- bt %>% predict(test.data)
+mean(test.data$bt.pred.values == test.data$fraudulent)
 
-mean(bt.pred.values == test.data$fraudulent)
 plot(varImp(bt, scale = TRUE))
 
 
 ### Random Forest
+set.seed(420)
+tuneGrid <- expand.grid(
+  mtry = 1:14, 
+  splitrule = "variance", 
+  min.node.size = 5
+)
+
+rf <- train(fraudulent ~ ., data = train.data,
+            method = "ranger", # You can also use "rf", but "ranger" is faster!
+            trControl = trainControl("cv", number = 10),
+            importance = "permutation",
+            tuneGrid = tuneGrid,
+            num.trees = 150,
+            allowParallel = TRUE)
+test.data$rf.pred.valeus <- rf %>% predict(test.data)
+mean(test.data$rf.pred.values == test.data$fraudulent)
+
+rf$bestTune
+plot(varImp(rf, scale = TRUE))
+
 
 ### Gradient Boosting
+set.seed(420)
+
+gbm <- train(fraudulent ~ ., data = train.data,
+             method = "gbm",                          # We are using gradient boosting
+             trControl = trainControl("cv", number = 10),
+             tuneLength = 20) # Play around with this parameter!
+
+# Final Model information
+gbm$finalModel
+
+# Best Tuning parameters?
+gbm$bestTune
+
+test.data$gb.pred.valeus <- gb %>% predict(test.data)
+mean(test.data$gb.pred.values == test.data$fraudulent)
+
 
 # Detach Parallelization
 stopCluster(cl) 
 registerDoSEQ() 
+
+# Compare Models
+
+ggplot(data = test.data, aes(x = cnt)) +
+  geom_histogram(aes(y = ..density..), color = "grey", fill = alpha("grey", 0.5), lwd = 1, bins = 20) +
+  geom_density(aes(x = bt.pred.values, color = "Bagged Trees"), lty = 2, lwd = 1) +
+  geom_density(aes(x = rf.pred.values, color = "Random Forest"), lty = 1, lwd = 1) +
+  geom_density(aes(x = gb.pred.values, color = "Gradient Boosting"), lty = 4, lwd = 1) +
+  scale_color_manual(name = "", values = c("#0F6AF8","#8108AB","#05C166")) +
+  theme_minimal() + theme(legend.position = c(0.85,0.9)) +
+  xlab("Is Fraudulent or not") + ylab("Density")
