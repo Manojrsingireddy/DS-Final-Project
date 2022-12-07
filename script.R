@@ -18,6 +18,11 @@ library(rsample)
 library(lattice)
 library(caret)
 library(modelr)
+library(rpart)
+library(iterators)
+library(foreach)
+library(parallel)
+library(doParallel)
 
 ### Read in Data
 fake <- read.csv("https://raw.githubusercontent.com/Manojrsingireddy/DS-Final-Project/main/fake_job_postings.csv")
@@ -131,30 +136,34 @@ ridge$bestTune$lambda
 ridge.pred.values <- ridge %>% predict(test.data)
 mean(ridge.pred.values == test.data$fraudulent)
 
-### Lasso Regression
-lambda_seq <- seq(0,0.005,length = 50) 
 
-set.seed(420)
-lasso <- train(factor(fraudulent) ~ ., data = train.data, 
-               method = "glmnet",
-               preProcess = "scale", 
-               trControl = trainControl("cv", number = 10), 
-               tuneGrid = expand.grid(alpha = 1,
-                                      lambda = lambda_seq)
-)
-lasso$bestTune$lambda
-lasso.pred.values <- lasso %>% predict(test.data)
-mean(lasso.pred.values == test.data$fraudulent)
-coefs <- coef(lasso$finalModel, lasso$bestTune$lambda)
-coefs@p[2] - 1
 
 
 ### Machine Learning Variations
 
+# Parallelization Setup
+
+cl <- makePSOCKcluster(detectCores() - 1) 
+registerDoParallel(cl)
+
 ### Bagging Tree
+set.seed(420)
+bt <- train(factor(fraudulent) ~ ., data = train.data,
+            method = "treebag", trControl = trainControl("cv", number = 10),
+            nbagg = 100,
+            allowParallel = TRUE,
+            control = rpart.control(cp = 0))
+
+bt.pred.values <- bt %>% predict(test.data)
+
+mean(bt.pred.values == test.data$fraudulent)
+plot(varImp(bt, scale = TRUE))
+
 
 ### Random Forest
 
 ### Gradient Boosting
 
-
+# Detach Parallelization
+stopCluster(cl) 
+registerDoSEQ() 
