@@ -182,6 +182,7 @@ nnet <- train(factor(fraudulent) ~ .,
                      )
 test.data$nnet.pred.values <- nnet %>% predict(test.data)
 nnet$finalModel
+nnet$bestTune
 plotnet(nnet$finalModel) #Plot the network
 
 # Compare Models
