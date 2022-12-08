@@ -148,8 +148,18 @@ bt <- train(factor(fraudulent) ~ ., data = train.data,
             metric = "Accuracy")
 test.data$bt.pred.values <- bt %>% predict(test.data)
 
+### Neural Network
+nnet <- train(factor(fraudulent) ~ ., 
+                     data = train.data, 
+                     method = "nnet", 
+                     trControl = trainControl(method = "cv", number = 10),
+                     na.action = na.omit,
+                     trace = FALSE)
+test.data$nnet.pred.values <- nnet %>% predict(test.data)
+
 # Compare Models
 
+# Used this Resource: https://stackoverflow.com/questions/23891140/r-how-to-visualize-confusion-matrix-using-the-caret-package
 draw_confusion_matrix <- function(cm, title) {
   
   layout(matrix(c(1,1,2)))
@@ -203,6 +213,8 @@ draw_confusion_matrix(caret::confusionMatrix(data = factor(test.data$fraudulent)
                       "Confusion Matrix for Lasso Regression") # Use Lasso
 draw_confusion_matrix(caret::confusionMatrix(data = factor(test.data$fraudulent), reference = test.data$bt.pred.values), 
                       "Confusion Matrix for Tree Bagging") # Use Tree Bagging
+draw_confusion_matrix(caret::confusionMatrix(data = factor(test.data$fraudulent), reference = test.data$nnet.pred.values), 
+                      "Confusion Matrix for Neural Net") # Use Neural Net
 
 
 
