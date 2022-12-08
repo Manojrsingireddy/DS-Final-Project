@@ -100,9 +100,7 @@ ggplot(data = fake, aes(x = fraudulent)) +
 ### Simple Regression to see relationship of variables with outcome
 
 ### Create Model to Examine Effect of Variables
-library(jtools)
-library(kableExtra)
-fake_lm_data <- fake %>% rename("Telecommuting Available" = telecommuting, 
+fake_lm_data <- fake %>% dplyr::rename("Telecommuting Available" = telecommuting, 
                                 "Company Logo Present" = has_company_logo,
                                 "Questions Present" = has_questions,
                                 "Location Present" = hasLocation,
@@ -183,7 +181,9 @@ nnet <- train(factor(fraudulent) ~ .,
 test.data$nnet.pred.values <- nnet %>% predict(test.data)
 nnet$finalModel
 nnet$bestTune
-plotnet(nnet$finalModel) #Plot the network
+plotnet(nnet$finalModel) 
+plot(varImp(nnet, scale=TRUE), main = "Most Important Variables for Neural Net")
+
 
 # Compare Models
 
