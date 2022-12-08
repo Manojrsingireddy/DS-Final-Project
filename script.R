@@ -158,6 +158,7 @@ lasso <- train(factor(fraudulent) ~ ., data = train.data,
 test.data$lasso.pred.values <- lasso %>% predict(test.data)
 coefs <- coef(lasso$finalModel, lasso$bestTune$lambda)
 coefs@p[2] - 1
+plot(varImp(lasso, scale = TRUE),main="Most Important Variables for Lasso Regression")
 
 ### Tree Bagging
 set.seed(420)
@@ -166,6 +167,7 @@ bt <- train(factor(fraudulent) ~ ., data = train.data,
             nbagg = 150,  
             metric = "Accuracy")
 test.data$bt.pred.values <- bt %>% predict(test.data)
+plot(varImp(bt, scale = TRUE),main="Most Important Variables for Tree Bagging")
 
 ### Neural Network
 nnet <- train(factor(fraudulent) ~ ., 
