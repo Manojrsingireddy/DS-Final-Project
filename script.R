@@ -25,6 +25,7 @@ library(parallel)
 library(doParallel)
 library(cvms)
 library(tibble)
+library(NeuralNetTools)
 
 
 ### Read in Data
@@ -174,9 +175,14 @@ nnet <- train(factor(fraudulent) ~ .,
                      data = train.data, 
                      method = "nnet", 
                      trControl = trainControl(method = "cv", number = 10),
-                     na.action = na.omit,
-                     trace = FALSE)
+                     trace = FALSE,
+                     learningrate = 0.25,
+                     tuneGrid = expand.grid(size = seq(2, 15), decay=10^seq(-4,0,by=1)),
+                     metric = "Accuracy"
+                     )
 test.data$nnet.pred.values <- nnet %>% predict(test.data)
+nnet$finalModel
+plotnet(nnet$finalModel) #Plot the network
 
 # Compare Models
 
