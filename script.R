@@ -62,6 +62,7 @@ fake <- fake %>% select(-c(job_id, title, location, department, salary_range, co
 fake <- fake %>% drop_na()
 
 # Reduce number of positive observations
+set.seed(420)
 fake1 <- fake %>% filter(fraudulent == 1)
 fake0 <- fake %>% filter(fraudulent == 0) %>% slice_sample(prop = 0.1)
 fake <- rbind(fake1,fake0)
@@ -69,6 +70,7 @@ fake <- rbind(fake1,fake0)
 ### Create Balance Table on the Result to See Mean Differences
 fake_bin <- fake %>% select (-c(required_experience,employment_type))
 fake_bin$fraudulent <- factor(fake_bin$fraudulent, labels = c("Not Fraudulent", "Fraudulent"))
+colnames(fake_bin) = c('Telecommuting', 'Company Logo', 'Questions', 'fraudulent', 'Location', 'Department', 'Salary Range', 'Company Profile', 'Requirements', 'Benefits', 'Industry', 'Function')
 datasummary_balance(~fraudulent, data=fake_bin, dinm_statistic = "std.error", fmt=5, title = "Data Summary BT on Fraudulent")
 
 ### Create histograms to analyze correlation between company profile and logo with fraudulent job postings
@@ -79,7 +81,9 @@ ggplot(data = fake, aes(x = fraudulent)) +
   geom_bar(width = 0.5) +
   facet_wrap(~hasCompany_profile, labeller = as_labeller(profiles)) +
   xlab("Fraudulent job posting (1 = Fraudulent, 0 = Not Fraudulent)") +
-  ylab("Count")
+  ylab("Count") +
+  theme(strip.background = element_rect(fill = 'blue')) +
+  theme(strip.text = element_text(color = 'white'))
 
 logos = c('0' = 'No Company Logo',
           '1' = 'Has Company Logo')
@@ -88,15 +92,30 @@ ggplot(data = fake, aes(x = fraudulent)) +
   geom_bar(width = 0.5) +
   facet_wrap(~has_company_logo, labeller = as_labeller(logos)) +
   xlab("Fraudulent job posting (1 = Fraudulent, 0 = Not Fraudulent)") +
-  ylab("Count")
-
-##### Regression Variations
+  ylab("Count") +
+  theme(strip.background = element_rect(fill = 'light blue')) +
+  theme(strip.text = element_text(color = 'black'))
 
 ### Simple Regression to see relationship of variables with outcome
 
-### Create Model to Examine Effect of binary Variables
-summary(lm_robust(fraudulent ~ hasLocation + hasDepartment + hasSalary_range + hasCompany_profile + hasRequirements +
-                    hasBenefits + hasIndustry + hasFunction + telecommuting + has_company_logo + has_questions , data=fake))
+### Create Model to Examine Effect of Variables
+library(jtools)
+library(kableExtra)
+fake_lm_data <- fake %>% rename("Telecommuting Available" = telecommuting, 
+                                "Company Logo Present" = has_company_logo,
+                                "Questions Present" = has_questions,
+                                "Location Present" = hasLocation,
+                                "Department Present" = hasDepartment,
+                                "Salary Range Present" = hasSalary_range,
+                                "Company Profile Present" = hasCompany_profile,
+                                "Requirements Present" = hasRequirements,
+                                "Benefits Present" = hasBenefits,
+                                "Industry Present" = hasIndustry,
+                                "Function Present" = hasFunction,
+                                "Required Experience: " = required_experience,
+                                "Employment Type: " = employment_type)
+summary(lm_robust(fraudulent ~ ., data=fake_lm_data))
+
 
 ### Split Data
 set.seed(420)
@@ -168,14 +187,14 @@ draw_confusion_matrix <- function(cm, title) {
   title(title, cex.main=2)
   
   # create the matrix 
-  rect(150, 430, 240, 370, col='#c7dca6')
+  rect(150, 430, 240, 370, col='#59a7ff')
   text(195, 435, 'Not Fraudulent', cex=1.2)
-  rect(250, 430, 340, 370, col='#ea7e7e')
+  rect(250, 430, 340, 370, col='#1e3fa1')
   text(295, 435, 'Fraudulent', cex=1.2)
   text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
   text(245, 450, 'Actual', cex=1.3, font=2)
-  rect(150, 305, 240, 365, col='#ea7e7e')
-  rect(250, 305, 340, 365, col='#c7dca6')
+  rect(150, 305, 240, 365, col='#1e3fa1')
+  rect(250, 305, 340, 365, col='#59a7ff')
   text(140, 400, 'Not Fraudulent', cex=1.2, srt=90)
   text(140, 335, 'Frauduelent', cex=1.2, srt=90)
   
@@ -205,6 +224,7 @@ draw_confusion_matrix <- function(cm, title) {
   text(70, 35, names(cm$overall[2]), cex=1.5, font=2)
   text(70, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
 }  
+
 
 
 draw_confusion_matrix(caret::confusionMatrix(data = factor(test.data$fraudulent), reference = test.data$ridge.pred.values), 
