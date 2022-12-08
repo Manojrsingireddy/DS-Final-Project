@@ -23,6 +23,9 @@ library(iterators)
 library(foreach)
 library(parallel)
 library(doParallel)
+library(cvms)
+library(tibble)
+
 
 ### Read in Data
 fake <- read.csv("https://raw.githubusercontent.com/Manojrsingireddy/DS-Final-Project/main/fake_job_postings.csv")
@@ -43,13 +46,13 @@ fake$hasFunction <- ifelse(fake$function. == "",0,1)
 ### Create Factor Variables
 fake$employment_type <- ifelse(fake$employment_type == "","None Given", fake$employment_type)
 emp_type_num = ifelse(fake$employment_type == 'Full-time',1,ifelse(fake$employment_type == 'Part-time',2,ifelse(fake$employment_type == 'Contract',3,
-ifelse(fake$employment_type == 'Temporary',4,ifelse(fake$employment_type == 'Other',5,6)))))
+                                                                                                                ifelse(fake$employment_type == 'Temporary',4,ifelse(fake$employment_type == 'Other',5,6)))))
 fake$employment_type <- factor(emp_type_num, labels = c("Full-Time","Part-Time","Contract","Temporary","Other","None Given"))      
 
 
 fake$required_experience <- ifelse(fake$required_experience == "","None Given", fake$required_experience)
 req_exp_num = ifelse(fake$required_experience == 'Executive',1,ifelse(fake$required_experience == 'Director',2,ifelse(fake$required_experience == 'Mid-Senior level',3,
-ifelse(fake$required_experience == 'Associate',4,ifelse(fake$required_experience == 'Entry level',5,ifelse(fake$required_experience == 'Internship',6,
+                                                                                                                      ifelse(fake$required_experience == 'Associate',4,ifelse(fake$required_experience == 'Entry level',5,ifelse(fake$required_experience == 'Internship',6,
                                                                                                                                                                                                                                  ifelse(fake$required_experience == 'Not Applicable',7,8)))))))
 fake$required_experience <- factor(req_exp_num, labels = c("Executive","Director","Mid-Senior","Associate","Entry","Internship", "Not Applicable", "None Given"))   
 
@@ -58,10 +61,13 @@ fake$required_experience <- factor(req_exp_num, labels = c("Executive","Director
 fake <- fake %>% select(-c(job_id, title, location, department, salary_range, company_profile, description, requirements, benefits, required_education, industry, function.))
 fake <- fake %>% drop_na()
 
+# Reduce number of positive observations
+fake1 <- fake %>% filter(fraudulent == 1)
+fake0 <- fake %>% filter(fraudulent == 0) %>% slice_sample(prop = 0.1)
+fake <- rbind(fake1,fake0)
 
 ### Create Balance Table on the Result to See Mean Differences
-fake_bin <- fake %>% select (hasLocation, hasDepartment, hasSalary_range, hasCompany_profile, hasRequirements,
-                             hasBenefits, hasIndustry, hasFunction, telecommuting, has_company_logo, has_questions, fraudulent)
+fake_bin <- fake %>% select (-c(required_experience,employment_type))
 fake_bin$fraudulent <- factor(fake_bin$fraudulent, labels = c("Not Fraudulent", "Fraudulent"))
 datasummary_balance(~fraudulent, data=fake_bin, dinm_statistic = "std.error", fmt=5, title = "Data Summary BT on Fraudulent")
 
@@ -89,8 +95,8 @@ ggplot(data = fake, aes(x = fraudulent)) +
 ### Simple Regression to see relationship of variables with outcome
 
 ### Create Model to Examine Effect of binary Variables
-summary(lm_robust(fraudulent ~ required_experience + employment_type + hasLocation + hasDepartment + hasSalary_range + hasCompany_profile + hasRequirements +
-                    hasBenefits + hasIndustry + hasFunction + telecommuting + has_company_logo + has_questions + employment_type , data=fake))
+summary(lm_robust(fraudulent ~ hasLocation + hasDepartment + hasSalary_range + hasCompany_profile + hasRequirements +
+                    hasBenefits + hasIndustry + hasFunction + telecommuting + has_company_logo + has_questions , data=fake))
 
 ### Split Data
 set.seed(420)
@@ -102,21 +108,7 @@ test.data   <- testing(split)
 lm_num <- lm(fraudulent ~ . , data = fake)
 nvars <- length(lm_num$coefficients)-1
 
-### Forward Stepwise
-set.seed(420)
-lm.front <- train(fraudulent ~ ., data = train.data, method = "leapForward",
-                 tuneGrid = data.frame(nvmax = 1:nvars), 
-                 trControl = trainControl(method = "cv", number = 10))
-lm.front$bestTune
-rmse(lm.front,test.data)
-
-### Backward Stepwise
-set.seed(420)
-lm.back <- train(fraudulent ~ ., data = train.data, method = "leapBackward",
-                  tuneGrid = data.frame(nvmax = 1:nvars), 
-                  trControl = trainControl(method = "cv", number = 10))
-lm.back$bestTune
-rmse(lm.back,test.data)
+### Machine Learning Variations
 
 ### Ridge Regression
 lambda_seq <- seq(0,0.5,length = 50) 
@@ -130,87 +122,89 @@ ridge <- train(factor(fraudulent) ~ ., data = train.data,
                tuneGrid = expand.grid(alpha = 0,
                                       lambda = lambda_seq)
 )
-
-ridge$bestTune$lambda
-
 test.data$ridge.pred.values <- ridge %>% predict(test.data)
-mean(test.data$ridge.pred.values == test.data$fraudulent)
 
+### Lasso Regression
+lambda_seq <- seq(0,0.5,length = 50) 
 
+set.seed(420)
 
+lasso <- train(factor(fraudulent) ~ ., data = train.data, 
+               method = "glmnet",
+               preProcess = "scale", 
+               trControl = trainControl("cv", number = 10), 
+               tuneGrid = expand.grid(alpha = 1,
+                                      lambda = lambda_seq)
+)
+test.data$lasso.pred.values <- lasso %>% predict(test.data)
+coefs <- coef(lasso$finalModel, lasso$bestTune$lambda)
+coefs@p[2] - 1
 
-### Machine Learning Variations
-
-# Parallelization Setup
-
-cl <- makePSOCKcluster(detectCores() - 1) 
-registerDoParallel(cl)
-
-### Bagging Tree
+### Tree Bagging
 set.seed(420)
 bt <- train(factor(fraudulent) ~ ., data = train.data,
             method = "treebag", trControl = trainControl("cv", number = 10),
-            nbagg = 100,
-            allowParallel = TRUE,
-            control = rpart.control(cp = 0))
-
+            nbagg = 150,  
+            metric = "Accuracy")
 test.data$bt.pred.values <- bt %>% predict(test.data)
-mean(test.data$bt.pred.values == test.data$fraudulent)
-
-plot(varImp(bt, scale = TRUE))
-
-
-### Random Forest
-set.seed(420)
-tuneGrid <- expand.grid(
-  mtry = 1:14, 
-  splitrule = "variance", 
-  min.node.size = 5
-)
-
-rf <- train(fraudulent ~ ., data = train.data,
-            method = "ranger", # You can also use "rf", but "ranger" is faster!
-            trControl = trainControl("cv", number = 10),
-            importance = "permutation",
-            tuneGrid = tuneGrid,
-            num.trees = 150,
-            allowParallel = TRUE)
-test.data$rf.pred.valeus <- rf %>% predict(test.data)
-mean(test.data$rf.pred.values == test.data$fraudulent)
-
-rf$bestTune
-plot(varImp(rf, scale = TRUE))
-
-
-### Gradient Boosting
-set.seed(420)
-
-gbm <- train(fraudulent ~ ., data = train.data,
-             method = "gbm",                          # We are using gradient boosting
-             trControl = trainControl("cv", number = 10),
-             tuneLength = 20) # Play around with this parameter!
-
-# Final Model information
-gbm$finalModel
-
-# Best Tuning parameters?
-gbm$bestTune
-
-test.data$gb.pred.valeus <- gb %>% predict(test.data)
-mean(test.data$gb.pred.values == test.data$fraudulent)
-
-
-# Detach Parallelization
-stopCluster(cl) 
-registerDoSEQ() 
 
 # Compare Models
 
-ggplot(data = test.data, aes(x = cnt)) +
-  geom_histogram(aes(y = ..density..), color = "grey", fill = alpha("grey", 0.5), lwd = 1, bins = 20) +
-  geom_density(aes(x = bt.pred.values, color = "Bagged Trees"), lty = 2, lwd = 1) +
-  geom_density(aes(x = rf.pred.values, color = "Random Forest"), lty = 1, lwd = 1) +
-  geom_density(aes(x = gb.pred.values, color = "Gradient Boosting"), lty = 4, lwd = 1) +
-  scale_color_manual(name = "", values = c("#0F6AF8","#8108AB","#05C166")) +
-  theme_minimal() + theme(legend.position = c(0.85,0.9)) +
-  xlab("Is Fraudulent or not") + ylab("Density")
+draw_confusion_matrix <- function(cm, title) {
+  
+  layout(matrix(c(1,1,2)))
+  par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title(title, cex.main=2)
+  
+  # create the matrix 
+  rect(150, 430, 240, 370, col='#c7dca6')
+  text(195, 435, 'Not Fraudulent', cex=1.2)
+  rect(250, 430, 340, 370, col='#ea7e7e')
+  text(295, 435, 'Fraudulent', cex=1.2)
+  text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Actual', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col='#ea7e7e')
+  rect(250, 305, 340, 365, col='#c7dca6')
+  text(140, 400, 'Not Fraudulent', cex=1.2, srt=90)
+  text(140, 335, 'Frauduelent', cex=1.2, srt=90)
+  
+  # add in the cm results 
+  res <- as.numeric(cm$table)
+  text(195, 400, res[1], cex=1.6, font=2, col='white')
+  text(195, 335, res[2], cex=1.6, font=2, col='white')
+  text(295, 400, res[3], cex=1.6, font=2, col='white')
+  text(295, 335, res[4], cex=1.6, font=2, col='white')
+  
+  # add in the specifics 
+  plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "DETAILS", xaxt='n', yaxt='n')
+  text(10, 85, names(cm$byClass[1]), cex=1.2, font=2)
+  text(10, 70, round(as.numeric(cm$byClass[1]), 3), cex=1.2)
+  text(30, 85, names(cm$byClass[2]), cex=1.2, font=2)
+  text(30, 70, round(as.numeric(cm$byClass[2]), 3), cex=1.2)
+  text(50, 85, names(cm$byClass[5]), cex=1.2, font=2)
+  text(50, 70, round(as.numeric(cm$byClass[5]), 3), cex=1.2)
+  text(70, 85, names(cm$byClass[6]), cex=1.2, font=2)
+  text(70, 70, round(as.numeric(cm$byClass[6]), 3), cex=1.2)
+  text(90, 85, names(cm$byClass[7]), cex=1.2, font=2)
+  text(90, 70, round(as.numeric(cm$byClass[7]), 3), cex=1.2)
+  
+  # add in the accuracy information 
+  text(30, 35, names(cm$overall[1]), cex=1.5, font=2)
+  text(30, 20, round(as.numeric(cm$overall[1]), 3), cex=1.4)
+  text(70, 35, names(cm$overall[2]), cex=1.5, font=2)
+  text(70, 20, round(as.numeric(cm$overall[2]), 3), cex=1.4)
+}  
+
+
+draw_confusion_matrix(caret::confusionMatrix(data = factor(test.data$fraudulent), reference = test.data$ridge.pred.values), 
+                      "Confusion Matrix for Ridge Regression") # Did for fun (no need to use)
+draw_confusion_matrix(caret::confusionMatrix(data = factor(test.data$fraudulent), reference = test.data$lasso.pred.values), 
+                      "Confusion Matrix for Lasso Regression") # Use Lasso
+draw_confusion_matrix(caret::confusionMatrix(data = factor(test.data$fraudulent), reference = test.data$bt.pred.values), 
+                      "Confusion Matrix for Tree Bagging") # Use Tree Bagging
+
+
+
+
+
