@@ -1,8 +1,5 @@
 ######################################################################
-### Title: "Final Project"
-### Course: STA 235H
-### Semester: Fall 2022
-### Name: Manoj Singireddy, Surya Chokkar, Pranav Mereddy, Cameron Wee
+### Title: "FraudOrNotJobPostings"
 #######################################################################
 # Clears memory
 rm(list = ls())
